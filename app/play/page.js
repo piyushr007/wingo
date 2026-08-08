@@ -256,6 +256,19 @@ export default function PlayPage() {
         </div>
       )}
 
+      {pendingCol && (
+        <div className="mb-4 rounded-lg bg-green-900/60 px-4 py-2 text-sm text-green-100">
+          Placing <strong>{pendingCol.entry.number}</strong> — tap a glowing green cell on your
+          ticket below.
+          <button
+            onClick={() => setPendingCol(null)}
+            className="ml-3 underline text-green-300 hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-[auto_1fr]">
         <div>
           <TicketGrid grid={ticket?.grid} onCellClick={handleCellClick} highlightCells={highlightCells} />
