@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '../../../lib/supabaseAdmin';
 import { createClient } from '../../../lib/supabaseServerAuth';
-import { SYMBOLS } from '../../../lib/gameRules';
+import { SYMBOLS, columnForNumber } from '../../../lib/gameRules';
 
 export async function POST(req) {
   const { gameId } = await req.json();
@@ -60,9 +60,11 @@ export async function POST(req) {
     number = Math.floor(Math.random() * 90) + 1;
   } while (drawnNumbers.has(number));
 
-  // ~10% chance of being a "wild" draw regardless of symbol/column
+  // ~10% chance of being a "wild" draw - placeable in any column.
   const isWild = Math.random() < 0.1;
-  const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)].key;
+  // The symbol always reflects the number's actual column, so the slot
+  // machine display matches where the number can legally be placed.
+  const symbol = SYMBOLS[columnForNumber(number)].key;
 
   const entry = {
     number,
