@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../../lib/supabaseClient';
-import { SYMBOLS } from '../../lib/gameRules';
+import { symbolForDraw } from '../../lib/gameRules';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -268,7 +268,7 @@ export default function AdminPage() {
           {latestDraw && (
             <div className="mb-6 flex items-center gap-4">
               <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-wgold bg-black text-3xl">
-                {SYMBOLS.find((s) => s.key === latestDraw.symbol)?.emoji}
+                {symbolForDraw(latestDraw.symbol)?.emoji}
               </div>
               <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-wgold bg-black text-3xl font-bold text-wgold">
                 {latestDraw.number}
