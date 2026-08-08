@@ -109,8 +109,26 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage(data.error || 'Could not draw number');
+        // 409/429 mean the safety-net guards caught a near-simultaneous
+        // duplicate request - this is expected occasionally and not a
+        // real problem, so don't alarm the admin with an error banner.
+        if (res.status !== 409 && res.status !== 429) {
+          setMessage(data.error || 'Could not draw number');
+        }
+        return;
       }
+      // Update local game state immediately from this response instead of
+      // waiting for the realtime echo - closes the timing gap where the
+      // countdown would still see the OLD lastDrawnAt and fire again.
+      setGame((g) =>
+        g
+          ? {
+              ...g,
+              status: g.status === 'lobby' ? 'active' : g.status,
+              drawn_numbers: [...(g.drawn_numbers || []), data.entry],
+            }
+          : g
+      );
     } finally {
       setDrawing(false);
       drawInFlightRef.current = false;
