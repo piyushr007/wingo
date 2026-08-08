@@ -7,7 +7,16 @@ import {
   calculateScore,
   columnForNumber,
   NUM_COLUMNS,
+  NUM_ROWS,
 } from '../../../lib/gameRules';
+
+// Returns true if a stored grid doesn't match the current board shape
+// (e.g. left over from before a rules change). Guards against silently
+// operating on a stale/misaligned grid.
+function gridShapeIsStale(grid) {
+  if (!Array.isArray(grid) || grid.length !== NUM_ROWS) return true;
+  return grid.some((row) => !Array.isArray(row) || row.length !== NUM_COLUMNS);
+}
 
 export async function POST(req) {
   const { gameId, number, col, row, wild } = await req.json();
@@ -57,19 +66,18 @@ export async function POST(req) {
   }
 
   // Fetch or create the player's ticket
-  let { data: ticketRow } = await admin
+  let { data: ticketRow, error: ticketFetchErr } = await admin
     .from('tickets')
     .select('*')
     .eq('game_id', gameId)
     .eq('player_id', user.id)
-    .single();
+    .maybeSingle();
+
+  if (ticketFetchErr) {
+    return NextResponse.json({ error: ticketFetchErr.message }, { status: 500 });
+  }
 
   if (!ticketRow) {
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('display_name')
-      .eq('id', user.id)
-      .single();
     const { data: created, error: createErr } = await admin
       .from('tickets')
       .insert({ game_id: gameId, player_id: user.id, grid: emptyTicket() })
@@ -79,7 +87,20 @@ export async function POST(req) {
       return NextResponse.json({ error: createErr.message }, { status: 500 });
     }
     ticketRow = created;
-    void profile;
+  } else if (gridShapeIsStale(ticketRow.grid)) {
+    // Ticket was created under an older board layout (different row/column
+    // count) - reset it to a fresh, correctly-shaped empty grid rather than
+    // risk misaligned placements.
+    const { data: fixed, error: fixErr } = await admin
+      .from('tickets')
+      .update({ grid: emptyTicket(), score: 0, score_details: {} })
+      .eq('id', ticketRow.id)
+      .select()
+      .single();
+    if (fixErr) {
+      return NextResponse.json({ error: fixErr.message }, { status: 500 });
+    }
+    ticketRow = fixed;
   }
 
   const grid = ticketRow.grid;
