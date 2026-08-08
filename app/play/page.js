@@ -26,9 +26,9 @@ export default function PlayPage() {
   const [game, setGame] = useState(null);
   const [ticket, setTicket] = useState({ grid: emptyTicket(), score: 0 });
   const [leaderboard, setLeaderboard] = useState([]);
-  const [pendingCol, setPendingCol] = useState(null); // for wild-number column choice
   const [message, setMessage] = useState('');
   const [countdown, setCountdown] = useState(null);
+  const [placing, setPlacing] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -125,8 +125,8 @@ export default function PlayPage() {
   const latestDraw = drawnNumbers[drawnNumbers.length - 1];
   const drawIntervalSeconds = game?.draw_interval_seconds || 15;
 
-  // Informational countdown synced off the last draw's timestamp - the
-  // admin's browser is what actually triggers the next draw.
+  // Countdown synced off the last draw's timestamp - the admin's browser is
+  // what actually triggers the next draw; this just tracks the same window.
   useEffect(() => {
     if (!game || game.status !== 'active' || !latestDraw) {
       setCountdown(null);
@@ -164,60 +164,46 @@ export default function PlayPage() {
     return latestDraw;
   }, [latestDraw, placedNumbers, countdown]);
 
-  // Clear any pending placement selection the moment its number expires,
-  // so a stale selection can't linger and confuse the player.
-  useEffect(() => {
-    if (pendingCol && (!currentPlaceable || pendingCol.entry.number !== currentPlaceable.number)) {
-      setPendingCol(null);
+  // Valid placement options for the current number, computed automatically -
+  // no click/selection step needed. Cells light up as soon as a number drops.
+  const currentOptions = useMemo(() => {
+    if (!currentPlaceable || !ticket?.grid) return [];
+    if (currentPlaceable.wild) {
+      return validPlacementsForWild(ticket.grid, currentPlaceable.number);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPlaceable?.number]);
+    const col = columnForNumber(currentPlaceable.number);
+    const rows = validRowsForPlacement(ticket.grid, col, currentPlaceable.number, false);
+    return rows.length ? [{ col, rows }] : [];
+  }, [currentPlaceable, ticket]);
 
-  async function placeNumber(entry, row, col) {
+  const highlightCells = currentOptions.flatMap((o) => o.rows.map((r) => ({ row: r, col: o.col })));
+
+  async function handleCellClick(row, col) {
+    if (!currentPlaceable || placing) return;
+    const option = currentOptions.find((o) => o.col === col && o.rows.includes(row));
+    if (!option) return;
+
+    setPlacing(true);
     setMessage('');
     const res = await fetch('/api/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: game.id, number: entry.number, row, col, wild: entry.wild }),
+      body: JSON.stringify({
+        gameId: game.id,
+        number: currentPlaceable.number,
+        row,
+        col,
+        wild: currentPlaceable.wild,
+      }),
     });
     const data = await res.json();
+    setPlacing(false);
     if (!res.ok) {
       setMessage(data.error || 'Could not place number');
       return;
     }
     setTicket((t) => ({ ...t, grid: data.grid, score: data.score }));
-    setPendingCol(null);
   }
-
-  function handleDrawClick(entry) {
-    if (!ticket?.grid) {
-      setMessage('Your ticket is still loading — try again in a moment.');
-      return;
-    }
-    if (entry.wild) {
-      // Let the player choose which column, then which row via highlighted cells
-      setPendingCol({ entry, options: validPlacementsForWild(ticket.grid, entry.number) });
-    } else {
-      const col = columnForNumber(entry.number);
-      const rows = validRowsForPlacement(ticket.grid, col, entry.number, false);
-      if (rows.length === 0) {
-        setMessage('No valid row available in that column (ascending rule).');
-        return;
-      }
-      setPendingCol({ entry, options: [{ col, rows }] });
-    }
-  }
-
-  function handleCellClick(row, col) {
-    if (!pendingCol) return;
-    const option = pendingCol.options.find((o) => o.col === col && o.rows.includes(row));
-    if (!option) return;
-    placeNumber(pendingCol.entry, row, col);
-  }
-
-  const highlightCells = pendingCol
-    ? pendingCol.options.flatMap((o) => o.rows.map((r) => ({ row: r, col: o.col })))
-    : [];
 
   if (!user || !game) {
     return (
@@ -254,7 +240,7 @@ export default function PlayPage() {
             </span>
             {countdown !== null && (
               <span className="ml-auto rounded-full bg-black/50 px-3 py-1 text-xs text-wgold">
-                Next in {countdown}s
+                {currentPlaceable ? `Place it! ${countdown}s left` : 'Expired — next draw soon'}
               </span>
             )}
           </>
@@ -269,16 +255,14 @@ export default function PlayPage() {
         </div>
       )}
 
-      {pendingCol && (
+      {currentPlaceable && (
         <div className="mb-4 rounded-lg bg-green-900/60 px-4 py-2 text-sm text-green-100">
-          Placing <strong>{pendingCol.entry.number}</strong> — tap a glowing green cell on your
-          ticket below.
-          <button
-            onClick={() => setPendingCol(null)}
-            className="ml-3 underline text-green-300 hover:text-white"
-          >
-            Cancel
-          </button>
+          Tap a glowing green cell on your ticket to place{' '}
+          <strong>
+            {currentPlaceable.number}
+            {currentPlaceable.wild ? ' (wild)' : ''}
+          </strong>
+          .
         </div>
       )}
 
@@ -291,31 +275,6 @@ export default function PlayPage() {
         </div>
 
         <div>
-          <h2 className="mb-1 text-sm font-bold text-wgold">Current number</h2>
-          <div className="mb-3">
-            {!currentPlaceable && (
-              <span className="text-sm text-white/50">
-                {latestDraw ? 'Number expired — wait for the next draw' : 'Waiting for first number…'}
-              </span>
-            )}
-            {currentPlaceable && (
-              <button
-                onClick={() => handleDrawClick(currentPlaceable)}
-                className={`rounded-lg border px-4 py-3 text-lg font-bold transition ${
-                  pendingCol?.entry.number === currentPlaceable.number
-                    ? 'border-green-400 bg-green-700'
-                    : 'border-wgold/50 bg-black/40 hover:bg-black/70'
-                }`}
-              >
-                {currentPlaceable.number}
-                {currentPlaceable.wild ? '*' : ''}
-                {countdown !== null && (
-                  <span className="ml-2 text-xs font-normal text-white/60">({countdown}s left)</span>
-                )}
-              </button>
-            )}
-          </div>
-
           <h2 className="mb-1 text-sm font-bold text-wgold">Leaderboard</h2>
           <ol className="space-y-1 text-sm">
             {leaderboard.map((row, i) => (
