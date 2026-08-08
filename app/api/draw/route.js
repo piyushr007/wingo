@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '../../../lib/supabaseAdmin';
 import { createClient } from '../../../lib/supabaseServerAuth';
-import { SYMBOLS, columnForNumber } from '../../../lib/gameRules';
+import { SYMBOLS, WILD_SYMBOL, columnForNumber } from '../../../lib/gameRules';
 
 export async function POST(req) {
   const { gameId } = await req.json();
@@ -78,9 +78,10 @@ export async function POST(req) {
 
   // ~10% chance of being a "wild" draw - placeable in any column.
   const isWild = Math.random() < 0.1;
-  // The symbol always reflects the number's actual column, so the slot
-  // machine display matches where the number can legally be placed.
-  const symbol = SYMBOLS[columnForNumber(number)].key;
+  // Wild draws show the Joker symbol (not a column symbol) so it's
+  // visually obvious the number can go in any column. Non-wild draws show
+  // the symbol matching the number's actual column.
+  const symbol = isWild ? WILD_SYMBOL.key : SYMBOLS[columnForNumber(number)].key;
 
   const entry = {
     number,
