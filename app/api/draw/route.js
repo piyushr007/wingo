@@ -54,6 +54,22 @@ export async function POST(req) {
     return NextResponse.json({ error: 'All numbers drawn, game ended' }, { status: 400 });
   }
 
+  // Safety net: refuse to draw again if the last draw happened less than
+  // 3 seconds ago, regardless of what triggered this request. Catches any
+  // accidental rapid-fire (duplicate tabs, retries, timer bugs) server-side,
+  // independent of whatever guard the client is using.
+  const MIN_GAP_SECONDS = 3;
+  if (drawn.length > 0) {
+    const lastDrawnAt = new Date(drawn[drawn.length - 1].drawnAt).getTime();
+    const secondsSinceLastDraw = (Date.now() - lastDrawnAt) / 1000;
+    if (secondsSinceLastDraw < MIN_GAP_SECONDS) {
+      return NextResponse.json(
+        { error: 'A number was just drawn - please wait a moment' },
+        { status: 429 }
+      );
+    }
+  }
+
   // Pick a random number 1-90 not yet drawn
   let number;
   do {
@@ -76,17 +92,32 @@ export async function POST(req) {
   const newDrawn = [...drawn, entry];
   const newStatus = game.status === 'lobby' ? 'active' : game.status;
 
-  const { error: updateErr } = await admin
+  // Optimistic concurrency check: only apply this update if drawn_count
+  // still matches what we read. If a concurrent request already drew a
+  // number in between, this update matches zero rows and we reject rather
+  // than silently drawing a second number too fast.
+  const { data: updated, error: updateErr } = await admin
     .from('games')
     .update({
       drawn_numbers: newDrawn,
+      drawn_count: newDrawn.length,
       status: newStatus,
       started_at: game.started_at || new Date().toISOString(),
     })
-    .eq('id', gameId);
+    .eq('id', gameId)
+    .eq('drawn_count', drawn.length)
+    .select()
+    .maybeSingle();
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  if (!updated) {
+    return NextResponse.json(
+      { error: 'Another draw just happened - try again' },
+      { status: 409 }
+    );
   }
 
   return NextResponse.json({ entry, drawnCount: newDrawn.length });
