@@ -10,14 +10,21 @@ import {
   validPlacementsForWild,
   SYMBOLS,
   columnForNumber,
+  NUM_ROWS,
+  NUM_COLUMNS,
 } from '../../lib/gameRules';
+
+function gridShapeIsStale(grid) {
+  if (!Array.isArray(grid) || grid.length !== NUM_ROWS) return true;
+  return grid.some((row) => !Array.isArray(row) || row.length !== NUM_COLUMNS);
+}
 
 export default function PlayPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState(null);
   const [game, setGame] = useState(null);
-  const [ticket, setTicket] = useState(null);
+  const [ticket, setTicket] = useState({ grid: emptyTicket(), score: 0 });
   const [leaderboard, setLeaderboard] = useState([]);
   const [pendingCol, setPendingCol] = useState(null); // for wild-number column choice
   const [message, setMessage] = useState('');
@@ -45,12 +52,22 @@ export default function PlayPage() {
 
   const loadTicket = useCallback(
     async (gameId, playerId) => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('tickets')
         .select('*')
         .eq('game_id', gameId)
         .eq('player_id', playerId)
-        .single();
+        .maybeSingle();
+      if (error) {
+        console.error('loadTicket error:', error);
+        return;
+      }
+      if (data && gridShapeIsStale(data.grid)) {
+        // Old ticket from before a rules change - display a fresh empty
+        // grid locally; the server will repair the stored row on next place.
+        setTicket({ ...data, grid: emptyTicket() });
+        return;
+      }
       setTicket(data || { grid: emptyTicket(), score: 0 });
     },
     [supabase]
@@ -160,7 +177,10 @@ export default function PlayPage() {
   }
 
   function handleDrawClick(entry) {
-    if (!ticket) return;
+    if (!ticket?.grid) {
+      setMessage('Your ticket is still loading — try again in a moment.');
+      return;
+    }
     if (entry.wild) {
       // Let the player choose which column, then which row via highlighted cells
       setPendingCol({ entry, options: validPlacementsForWild(ticket.grid, entry.number) });
