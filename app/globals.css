@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: radial-gradient(circle at top, #3a0d0d 0%, #1a0505 70%);
+}
+
+.wingo-cell {
+  @apply flex items-center justify-center rounded-md border border-wgold/40 bg-yellow-100/90 text-wmaroon font-bold text-sm h-9 select-none;
+}
+
+.wingo-cell-empty {
+  @apply bg-yellow-50/20 text-transparent;
+}
+
+.wingo-cell-clickable {
+  @apply cursor-pointer hover:ring-2 hover:ring-wgold transition;
+}
