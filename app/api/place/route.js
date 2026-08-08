@@ -38,7 +38,7 @@ export async function POST(req) {
   // Confirm the number was actually drawn in this game
   const { data: game } = await admin
     .from('games')
-    .select('drawn_numbers, status')
+    .select('drawn_numbers, status, draw_interval_seconds')
     .eq('id', gameId)
     .single();
 
@@ -47,9 +47,25 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Game has ended' }, { status: 400 });
   }
 
-  const drawnEntry = (game.drawn_numbers || []).find((d) => d.number === number);
+  const allDrawn = game.drawn_numbers || [];
+  const drawnEntry = allDrawn.find((d) => d.number === number);
   if (!drawnEntry) {
     return NextResponse.json({ error: 'That number has not been drawn' }, { status: 400 });
+  }
+
+  // A number can only be placed while it is the CURRENT draw - i.e. no
+  // newer number has been drawn since, and its 15s window hasn't elapsed.
+  const latestDrawn = allDrawn[allDrawn.length - 1];
+  const isStillCurrent = latestDrawn.number === number;
+  const windowSeconds = game.draw_interval_seconds || 15;
+  const secondsSinceDrawn = (Date.now() - new Date(drawnEntry.drawnAt).getTime()) / 1000;
+  const withinWindow = secondsSinceDrawn <= windowSeconds;
+
+  if (!isStillCurrent || !withinWindow) {
+    return NextResponse.json(
+      { error: 'That number has expired and can no longer be placed' },
+      { status: 400 }
+    );
   }
 
   // Validate column: must match symbol's column unless it's a wild draw
