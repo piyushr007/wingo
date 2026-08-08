@@ -43,7 +43,7 @@ export default function TicketGrid({ grid, onCellClick, highlightCells }) {
             {Array.from({ length: NUM_COLUMNS }).map((_, c) => {
               const cell = grid?.[r]?.[c] ?? null;
               const isHighlighted = highlightCells?.some((h) => h.row === r && h.col === c);
-              const clickable = !!onCellClick && !cell;
+              const clickable = !!onCellClick && !cell && isHighlighted;
               return (
                 <div
                   key={c}
@@ -52,8 +52,7 @@ export default function TicketGrid({ grid, onCellClick, highlightCells }) {
                     'wingo-cell',
                     '!h-8 !w-[34px] !text-xs',
                     !cell ? 'wingo-cell-empty' : '',
-                    clickable ? 'wingo-cell-clickable' : '',
-                    isHighlighted ? 'ring-2 ring-green-400' : '',
+                    clickable ? '!cursor-pointer !bg-green-400 !text-wmaroon !opacity-100 animate-pulse' : '',
                   ].join(' ')}
                 >
                   {cell ? (cell.wild ? `${cell.number}*` : cell.number) : ''}
