@@ -162,12 +162,14 @@ export default function PlayPage() {
 
   async function placeNumber(entry, row, col) {
     setMessage('');
+    console.log('[WINGO] placing', entry.number, 'at row', row, 'col', col);
     const res = await fetch('/api/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameId: game.id, number: entry.number, row, col, wild: entry.wild }),
     });
     const data = await res.json();
+    console.log('[WINGO] place API response:', res.status, data);
     if (!res.ok) {
       setMessage(data.error || 'Could not place number');
       return;
@@ -177,6 +179,11 @@ export default function PlayPage() {
   }
 
   function handleDrawClick(entry) {
+    console.log('[WINGO] number clicked:', entry);
+    if (typeof document !== 'undefined') {
+      const el = document.getElementById('wingo-debug-last-click');
+      if (el) el.textContent = `number ${entry.number} clicked at ${new Date().toLocaleTimeString()}`;
+    }
     if (!ticket?.grid) {
       setMessage('Your ticket is still loading — try again in a moment.');
       return;
@@ -187,6 +194,7 @@ export default function PlayPage() {
     } else {
       const col = columnForNumber(entry.number);
       const rows = validRowsForPlacement(ticket.grid, col, entry.number, false);
+      console.log('[WINGO] column:', col, 'valid rows:', rows);
       if (rows.length === 0) {
         setMessage('No valid row available in that column (ascending rule).');
         return;
@@ -196,9 +204,13 @@ export default function PlayPage() {
   }
 
   function handleCellClick(row, col) {
+    console.log('[WINGO] cell clicked:', row, col, 'pendingCol:', pendingCol);
     if (!pendingCol) return;
     const option = pendingCol.options.find((o) => o.col === col && o.rows.includes(row));
-    if (!option) return;
+    if (!option) {
+      console.log('[WINGO] cell not in valid options, ignoring');
+      return;
+    }
     placeNumber(pendingCol.entry, row, col);
   }
 
@@ -268,6 +280,19 @@ export default function PlayPage() {
           </button>
         </div>
       )}
+
+      <div className="mb-4 rounded-lg border border-yellow-500/50 bg-black/60 p-3 text-xs text-white/80">
+        <strong className="text-yellow-400">Debug info</strong> (safe to ignore, remove later):
+        <div>game id: {game?.id || 'none'} · status: {game?.status}</div>
+        <div>user id: {user?.id || 'none'}</div>
+        <div>ticket loaded: {ticket ? 'yes' : 'no'} · grid rows: {ticket?.grid?.length ?? 'n/a'}</div>
+        <div>drawn numbers: {drawnNumbers.length}</div>
+        <div>pendingCol set: {pendingCol ? `yes (number ${pendingCol.entry.number})` : 'no'}</div>
+        <div>
+          last button click:{' '}
+          <span id="wingo-debug-last-click">(click a number to test)</span>
+        </div>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-[auto_1fr]">
         <div>
