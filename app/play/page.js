@@ -154,22 +154,33 @@ export default function PlayPage() {
     return set;
   }, [ticket]);
 
-  // Numbers drawn but not yet placed by this player, most recent first
-  const unplacedDrawn = drawnNumbers
-    .filter((d) => !placedNumbers.has(d.number))
-    .slice()
-    .reverse();
+  // Only the CURRENT drawn number is placeable, and only while its window
+  // (draw_interval_seconds) hasn't elapsed. Older numbers are expired and
+  // are never shown, even if the player never placed them.
+  const currentPlaceable = useMemo(() => {
+    if (!latestDraw) return null;
+    if (placedNumbers.has(latestDraw.number)) return null;
+    if (countdown !== null && countdown <= 0) return null;
+    return latestDraw;
+  }, [latestDraw, placedNumbers, countdown]);
+
+  // Clear any pending placement selection the moment its number expires,
+  // so a stale selection can't linger and confuse the player.
+  useEffect(() => {
+    if (pendingCol && (!currentPlaceable || pendingCol.entry.number !== currentPlaceable.number)) {
+      setPendingCol(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPlaceable?.number]);
 
   async function placeNumber(entry, row, col) {
     setMessage('');
-    console.log('[WINGO] placing', entry.number, 'at row', row, 'col', col);
     const res = await fetch('/api/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameId: game.id, number: entry.number, row, col, wild: entry.wild }),
     });
     const data = await res.json();
-    console.log('[WINGO] place API response:', res.status, data);
     if (!res.ok) {
       setMessage(data.error || 'Could not place number');
       return;
@@ -179,11 +190,6 @@ export default function PlayPage() {
   }
 
   function handleDrawClick(entry) {
-    console.log('[WINGO] number clicked:', entry);
-    if (typeof document !== 'undefined') {
-      const el = document.getElementById('wingo-debug-last-click');
-      if (el) el.textContent = `number ${entry.number} clicked at ${new Date().toLocaleTimeString()}`;
-    }
     if (!ticket?.grid) {
       setMessage('Your ticket is still loading — try again in a moment.');
       return;
@@ -194,7 +200,6 @@ export default function PlayPage() {
     } else {
       const col = columnForNumber(entry.number);
       const rows = validRowsForPlacement(ticket.grid, col, entry.number, false);
-      console.log('[WINGO] column:', col, 'valid rows:', rows);
       if (rows.length === 0) {
         setMessage('No valid row available in that column (ascending rule).');
         return;
@@ -204,13 +209,9 @@ export default function PlayPage() {
   }
 
   function handleCellClick(row, col) {
-    console.log('[WINGO] cell clicked:', row, col, 'pendingCol:', pendingCol);
     if (!pendingCol) return;
     const option = pendingCol.options.find((o) => o.col === col && o.rows.includes(row));
-    if (!option) {
-      console.log('[WINGO] cell not in valid options, ignoring');
-      return;
-    }
+    if (!option) return;
     placeNumber(pendingCol.entry, row, col);
   }
 
@@ -281,19 +282,6 @@ export default function PlayPage() {
         </div>
       )}
 
-      <div className="mb-4 rounded-lg border border-yellow-500/50 bg-black/60 p-3 text-xs text-white/80">
-        <strong className="text-yellow-400">Debug info</strong> (safe to ignore, remove later):
-        <div>game id: {game?.id || 'none'} · status: {game?.status}</div>
-        <div>user id: {user?.id || 'none'}</div>
-        <div>ticket loaded: {ticket ? 'yes' : 'no'} · grid rows: {ticket?.grid?.length ?? 'n/a'}</div>
-        <div>drawn numbers: {drawnNumbers.length}</div>
-        <div>pendingCol set: {pendingCol ? `yes (number ${pendingCol.entry.number})` : 'no'}</div>
-        <div>
-          last button click:{' '}
-          <span id="wingo-debug-last-click">(click a number to test)</span>
-        </div>
-      </div>
-
       <div className="grid gap-4 md:grid-cols-[auto_1fr]">
         <div>
           <TicketGrid grid={ticket?.grid} onCellClick={handleCellClick} highlightCells={highlightCells} />
@@ -303,25 +291,29 @@ export default function PlayPage() {
         </div>
 
         <div>
-          <h2 className="mb-1 text-sm font-bold text-wgold">Numbers to place</h2>
-          <div className="mb-3 flex flex-wrap gap-2">
-            {unplacedDrawn.length === 0 && (
-              <span className="text-sm text-white/50">No pending numbers</span>
+          <h2 className="mb-1 text-sm font-bold text-wgold">Current number</h2>
+          <div className="mb-3">
+            {!currentPlaceable && (
+              <span className="text-sm text-white/50">
+                {latestDraw ? 'Number expired — wait for the next draw' : 'Waiting for first number…'}
+              </span>
             )}
-            {unplacedDrawn.map((entry) => (
+            {currentPlaceable && (
               <button
-                key={entry.number}
-                onClick={() => handleDrawClick(entry)}
-                className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
-                  pendingCol?.entry.number === entry.number
+                onClick={() => handleDrawClick(currentPlaceable)}
+                className={`rounded-lg border px-4 py-3 text-lg font-bold transition ${
+                  pendingCol?.entry.number === currentPlaceable.number
                     ? 'border-green-400 bg-green-700'
                     : 'border-wgold/50 bg-black/40 hover:bg-black/70'
                 }`}
               >
-                {entry.number}
-                {entry.wild ? '*' : ''}
+                {currentPlaceable.number}
+                {currentPlaceable.wild ? '*' : ''}
+                {countdown !== null && (
+                  <span className="ml-2 text-xs font-normal text-white/60">({countdown}s left)</span>
+                )}
               </button>
-            ))}
+            )}
           </div>
 
           <h2 className="mb-1 text-sm font-bold text-wgold">Leaderboard</h2>
