@@ -8,7 +8,7 @@ import {
   emptyTicket,
   validRowsForPlacement,
   validPlacementsForWild,
-  SYMBOLS,
+  symbolForDraw,
   columnForNumber,
   NUM_ROWS,
   NUM_COLUMNS,
@@ -227,7 +227,7 @@ export default function PlayPage() {
         {latestDraw ? (
           <>
             <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-wgold bg-black text-2xl">
-              {SYMBOLS.find((s) => s.key === latestDraw.symbol)?.emoji}
+              {symbolForDraw(latestDraw.symbol)?.emoji}
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-wgold bg-black text-2xl font-bold text-wgold">
               {latestDraw.number}
