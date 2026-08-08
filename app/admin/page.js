@@ -145,6 +145,23 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoDraw, game?.status, lastDrawnAt, drawIntervalSeconds, drawing]);
 
+  async function resetAllData() {
+    const confirmed = window.confirm(
+      'This permanently deletes ALL games and player tickets, for everyone. Are you sure?'
+    );
+    if (!confirmed) return;
+    setMessage('');
+    const res = await fetch('/api/reset', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      setMessage(data.error || 'Could not reset data');
+      return;
+    }
+    setGame(null);
+    setLeaderboard([]);
+    setAutoDraw(false);
+  }
+
   if (isAdmin === null) {
     return <main className="flex min-h-screen items-center justify-center text-wgold">Loading…</main>;
   }
@@ -164,14 +181,22 @@ export default function AdminPage() {
     <main className="mx-auto max-w-4xl px-3 py-4">
       <h1 className="mb-4 text-xl font-bold text-wgold">🎰 WINGO — Admin</h1>
 
-      {(!game || game.status === 'ended') && (
+      <div className="mb-4 flex flex-wrap gap-3">
+        {(!game || game.status === 'ended') && (
+          <button
+            onClick={createGame}
+            className="rounded-lg bg-wgold px-4 py-2 font-bold text-wmaroon hover:brightness-110"
+          >
+            {game ? 'Start New Game' : 'Create New Game'}
+          </button>
+        )}
         <button
-          onClick={createGame}
-          className="mb-4 rounded-lg bg-wgold px-4 py-2 font-bold text-wmaroon hover:brightness-110"
+          onClick={resetAllData}
+          className="rounded-lg border border-red-400 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-900/40"
         >
-          {game ? 'Start New Game' : 'Create New Game'}
+          Wipe All Old Games &amp; Data
         </button>
-      )}
+      </div>
 
       {game && (
         <>
