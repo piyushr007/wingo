@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../../lib/supabaseClient';
 import { SYMBOLS } from '../../lib/gameRules';
@@ -16,6 +16,7 @@ export default function AdminPage() {
   const [drawing, setDrawing] = useState(false);
   const [autoDraw, setAutoDraw] = useState(false);
   const [countdown, setCountdown] = useState(null);
+  const drawInFlightRef = useRef(false); // synchronous guard, unlike state
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -96,19 +97,23 @@ export default function AdminPage() {
   }
 
   async function drawNumber() {
-    if (!game) return;
+    if (!game || drawInFlightRef.current) return;
+    drawInFlightRef.current = true;
     setDrawing(true);
     setMessage('');
-    const res = await fetch('/api/draw', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: game.id }),
-    });
-    const data = await res.json();
-    setDrawing(false);
-    if (!res.ok) {
-      setMessage(data.error || 'Could not draw number');
-      return;
+    try {
+      const res = await fetch('/api/draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: game.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || 'Could not draw number');
+      }
+    } finally {
+      setDrawing(false);
+      drawInFlightRef.current = false;
     }
   }
 
@@ -125,6 +130,8 @@ export default function AdminPage() {
     : null;
 
   // Auto-draw countdown: ticks every second, fires drawNumber() when it hits 0.
+  // Uses a ref (not state) to guard against double-firing, since state
+  // updates are asynchronous and won't block a same-tick re-entry.
   useEffect(() => {
     if (!autoDraw || !game || game.status === 'ended') {
       setCountdown(null);
@@ -135,7 +142,7 @@ export default function AdminPage() {
       const elapsed = (Date.now() - anchor) / 1000;
       const remaining = Math.max(0, Math.ceil(drawIntervalSeconds - elapsed));
       setCountdown(remaining);
-      if (remaining <= 0 && !drawing) {
+      if (remaining <= 0 && !drawInFlightRef.current) {
         drawNumber();
       }
     };
@@ -143,7 +150,7 @@ export default function AdminPage() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoDraw, game?.status, lastDrawnAt, drawIntervalSeconds, drawing]);
+  }, [autoDraw, game?.status, lastDrawnAt, drawIntervalSeconds]);
 
   async function resetAllData() {
     const confirmed = window.confirm(
