@@ -5,7 +5,7 @@ import {
   emptyTicket,
   validRowsForPlacement,
   calculateScore,
-  columnForNumber,
+  columnIndexForSymbol,
   NUM_COLUMNS,
   NUM_ROWS,
 } from '../../../lib/gameRules';
@@ -68,10 +68,11 @@ export async function POST(req) {
     );
   }
 
-  // Validate column: must match symbol's column unless it's a wild draw
+  // Validate column: must match the symbol drawn alongside this number,
+  // unless it's a wild draw (any column allowed).
   if (!drawnEntry.wild) {
-    const expectedCol = columnForNumber(number);
-    if (col !== expectedCol) {
+    const expectedCol = columnIndexForSymbol(drawnEntry.symbol);
+    if (expectedCol === -1 || col !== expectedCol) {
       return NextResponse.json(
         { error: 'This number does not belong in that column' },
         { status: 400 }
