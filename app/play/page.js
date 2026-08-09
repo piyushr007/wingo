@@ -9,7 +9,7 @@ import {
   validRowsForPlacement,
   validPlacementsForWild,
   symbolForDraw,
-  columnForNumber,
+  columnIndexForSymbol,
   NUM_ROWS,
   NUM_COLUMNS,
 } from '../../lib/gameRules';
@@ -68,7 +68,30 @@ export default function PlayPage() {
         setTicket({ ...data, grid: emptyTicket() });
         return;
       }
-      setTicket(data || { grid: emptyTicket(), score: 0 });
+      if (data) {
+        setTicket(data);
+        return;
+      }
+      // No ticket yet for this player+game - create one now so the admin
+      // sees them as "joined" immediately, not only after their first
+      // placement. Ignore a duplicate-row error from a race with another
+      // tab/request; just re-fetch in that case.
+      const { data: created, error: createErr } = await supabase
+        .from('tickets')
+        .insert({ game_id: gameId, player_id: playerId, grid: emptyTicket() })
+        .select()
+        .single();
+      if (createErr) {
+        const { data: existing } = await supabase
+          .from('tickets')
+          .select('*')
+          .eq('game_id', gameId)
+          .eq('player_id', playerId)
+          .maybeSingle();
+        setTicket(existing || { grid: emptyTicket(), score: 0 });
+        return;
+      }
+      setTicket(created);
     },
     [supabase]
   );
@@ -171,7 +194,8 @@ export default function PlayPage() {
     if (currentPlaceable.wild) {
       return validPlacementsForWild(ticket.grid, currentPlaceable.number);
     }
-    const col = columnForNumber(currentPlaceable.number);
+    const col = columnIndexForSymbol(currentPlaceable.symbol);
+    if (col === -1) return [];
     const rows = validRowsForPlacement(ticket.grid, col, currentPlaceable.number, false);
     return rows.length ? [{ col, rows }] : [];
   }, [currentPlaceable, ticket]);
