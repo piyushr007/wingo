@@ -1,7 +1,22 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '../../../lib/supabaseAdmin';
 import { createClient } from '../../../lib/supabaseServerAuth';
-import { SYMBOLS, WILD_SYMBOL, columnForNumber } from '../../../lib/gameRules';
+import { SYMBOLS, WILD_SYMBOL } from '../../../lib/gameRules';
+
+// Weighted random pick: each of the 5 real symbols at 18%, wild at 10%.
+// Number and symbol are chosen completely independently - the symbol has
+// no relationship to the number's value.
+function pickWeightedSymbol() {
+  const r = Math.random(); // [0, 1)
+  const perSymbol = 0.18;
+  let cumulative = 0;
+  for (const s of SYMBOLS) {
+    cumulative += perSymbol; // 0.18, 0.36, 0.54, 0.72, 0.90
+    if (r < cumulative) return { key: s.key, wild: false };
+  }
+  // Remaining 10% (r >= 0.90) is wild.
+  return { key: WILD_SYMBOL.key, wild: true };
+}
 
 export async function POST(req) {
   const { gameId } = await req.json();
@@ -70,18 +85,17 @@ export async function POST(req) {
     }
   }
 
-  // Pick a random number 1-90 not yet drawn
-  let number;
-  do {
-    number = Math.floor(Math.random() * 90) + 1;
-  } while (drawnNumbers.has(number));
+  // Number: uniform random 1-90, not yet drawn - completely independent
+  // of the symbol.
+  const remainingNumbers = [];
+  for (let n = 1; n <= 90; n++) {
+    if (!drawnNumbers.has(n)) remainingNumbers.push(n);
+  }
+  const number = remainingNumbers[Math.floor(Math.random() * remainingNumbers.length)];
 
-  // ~10% chance of being a "wild" draw - placeable in any column.
-  const isWild = Math.random() < 0.1;
-  // Wild draws show the Joker symbol (not a column symbol) so it's
-  // visually obvious the number can go in any column. Non-wild draws show
-  // the symbol matching the number's actual column.
-  const symbol = isWild ? WILD_SYMBOL.key : SYMBOLS[columnForNumber(number)].key;
+  // Symbol: independently random - 18% each for the 5 real symbols (90%
+  // total) and 10% for Wild. No relationship to the number's value.
+  const { key: symbol, wild: isWild } = pickWeightedSymbol();
 
   const entry = {
     number,
