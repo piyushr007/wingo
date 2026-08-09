@@ -147,9 +147,12 @@ export default function AdminPage() {
     ? new Date(drawnNumbersForTimer[drawnNumbersForTimer.length - 1].drawnAt).getTime()
     : null;
 
-  // Auto-draw countdown: ticks every second, fires drawNumber() when it hits 0.
-  // Uses a ref (not state) to guard against double-firing, since state
-  // updates are asynchronous and won't block a same-tick re-entry.
+  // Auto-draw countdown: ticks every 250ms (display rounds to whole
+  // seconds) and fires drawNumber() as soon as the window elapses - a
+  // faster tick reduces the trigger-detection lag after 0 vs a full 1s
+  // granularity. Uses a ref (not state) to guard against double-firing,
+  // since state updates are asynchronous and won't block a same-tick
+  // re-entry.
   useEffect(() => {
     if (!autoDraw || !game || game.status === 'ended') {
       setCountdown(null);
@@ -165,7 +168,7 @@ export default function AdminPage() {
       }
     };
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, 250);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoDraw, game?.status, lastDrawnAt, drawIntervalSeconds]);
@@ -296,19 +299,42 @@ export default function AdminPage() {
           </div>
 
           <div className="mb-6">
-            <h2 className="mb-2 font-bold text-wgold">Leaderboard</h2>
-            <ol className="space-y-1 text-sm">
-              {leaderboard.map((row, i) => (
-                <li key={row.player_id} className="flex justify-between rounded bg-wmaroon/40 px-3 py-1">
-                  <span>
-                    {i + 1}. {row.profiles?.display_name || 'Player'}
-                  </span>
-                  <span className="font-bold">{row.score}</span>
-                </li>
+            <h2 className="mb-2 font-bold text-wgold">
+              Players joined <span className="text-white/50">({leaderboard.length})</span>
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {leaderboard.map((row) => (
+                <span
+                  key={row.player_id}
+                  className="rounded-full border border-wgold/40 bg-wmaroon/50 px-3 py-1 text-sm"
+                >
+                  {row.profiles?.display_name || 'Player'}
+                </span>
               ))}
-              {leaderboard.length === 0 && <li className="text-white/50">No players yet</li>}
-            </ol>
+              {leaderboard.length === 0 && (
+                <span className="text-sm text-white/50">
+                  No players yet — share the link below to get people in.
+                </span>
+              )}
+            </div>
           </div>
+
+          {game.status !== 'lobby' && (
+            <div className="mb-6">
+              <h2 className="mb-2 font-bold text-wgold">Leaderboard</h2>
+              <ol className="space-y-1 text-sm">
+                {leaderboard.map((row, i) => (
+                  <li key={row.player_id} className="flex justify-between rounded bg-wmaroon/40 px-3 py-1">
+                    <span>
+                      {i + 1}. {row.profiles?.display_name || 'Player'}
+                    </span>
+                    <span className="font-bold">{row.score}</span>
+                  </li>
+                ))}
+                {leaderboard.length === 0 && <li className="text-white/50">No players yet</li>}
+              </ol>
+            </div>
+          )}
 
           <div className="rounded-xl border border-wgold/30 bg-black/30 p-4 text-sm">
             <p className="mb-1 text-white/70">Share this link with players:</p>
