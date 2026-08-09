@@ -34,21 +34,18 @@ export async function POST(req) {
   }
 
   const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
+
+  // Fetch the caller's role and the game row in parallel - they don't
+  // depend on each other, so there's no need to wait for one before
+  // starting the other. Cuts a full round-trip off the critical path.
+  const [{ data: profile }, { data: game, error: gameErr }] = await Promise.all([
+    admin.from('profiles').select('role').eq('id', user.id).single(),
+    admin.from('games').select('*').eq('id', gameId).single(),
+  ]);
 
   if (!profile || profile.role !== 'admin') {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
-
-  const { data: game, error: gameErr } = await admin
-    .from('games')
-    .select('*')
-    .eq('id', gameId)
-    .single();
 
   if (gameErr || !game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 });
