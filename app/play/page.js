@@ -144,6 +144,29 @@ export default function PlayPage() {
     };
   }, [game?.id, supabase, user, loadLeaderboard, loadTicket]);
 
+  // Fast-path polling fallback: re-fetches just the game row every 2s while
+  // a draw is expected soon. Runs alongside the realtime subscription -
+  // whichever update arrives first wins, since setGame with the same/newer
+  // data is harmless. This keeps the player UI snappy even if the realtime
+  // websocket hop is briefly slow, without waiting on it exclusively.
+  useEffect(() => {
+    if (!game?.id || game.status === 'ended') return;
+    const id = setInterval(async () => {
+      const { data } = await supabase.from('games').select('*').eq('id', game.id).single();
+      if (data) {
+        setGame((prev) => {
+          if (!prev) return data;
+          const prevCount = (prev.drawn_numbers || []).length;
+          const nextCount = (data.drawn_numbers || []).length;
+          // Only take the polled version if it's actually newer, so we
+          // never clobber a fresher local update with a stale poll result.
+          return nextCount >= prevCount ? data : prev;
+        });
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [game?.id, game?.status, supabase]);
+
   const drawnNumbers = game?.drawn_numbers || [];
   const latestDraw = drawnNumbers[drawnNumbers.length - 1];
   const drawIntervalSeconds = game?.draw_interval_seconds || 15;
