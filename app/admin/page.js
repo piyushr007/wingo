@@ -16,6 +16,8 @@ export default function AdminPage() {
   const [drawing, setDrawing] = useState(false);
   const [autoDraw, setAutoDraw] = useState(false);
   const [countdown, setCountdown] = useState(null);
+  const [intervalInput, setIntervalInput] = useState('15');
+  const [savingInterval, setSavingInterval] = useState(false);
   const drawInFlightRef = useRef(false); // synchronous guard, unlike state
 
   useEffect(() => {
@@ -58,6 +60,15 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAdmin) loadGame();
   }, [isAdmin, loadGame]);
+
+  // Keep the interval input field in sync with the loaded game's actual
+  // value, so it doesn't silently show a stale default (e.g. after
+  // creating a new game, or loading one someone else already configured).
+  useEffect(() => {
+    if (game?.draw_interval_seconds != null) {
+      setIntervalInput(String(game.draw_interval_seconds));
+    }
+  }, [game?.id, game?.draw_interval_seconds]);
 
   useEffect(() => {
     if (game) loadLeaderboard(game.id);
@@ -139,6 +150,32 @@ export default function AdminPage() {
     if (!game) return;
     setAutoDraw(false);
     await supabase.from('games').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', game.id);
+  }
+
+  async function saveInterval() {
+    if (!game) return;
+    const value = Math.round(Number(intervalInput));
+    if (!Number.isFinite(value) || value < 5 || value > 120) {
+      setMessage('Timer must be a number between 5 and 120 seconds');
+      return;
+    }
+    setSavingInterval(true);
+    setMessage('');
+    const { data, error } = await supabase
+      .from('games')
+      .update({ draw_interval_seconds: value })
+      .eq('id', game.id)
+      .select()
+      .single();
+    setSavingInterval(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    // Update local state immediately - the realtime echo will confirm it,
+    // but players' countdowns should pick up the new value right away via
+    // their own subscription without the admin having to wait on it here.
+    setGame((g) => (g ? { ...g, draw_interval_seconds: data.draw_interval_seconds } : g));
   }
 
   const drawIntervalSeconds = game?.draw_interval_seconds || 15;
@@ -251,7 +288,7 @@ export default function AdminPage() {
                     : 'border border-wgold/50 text-wgold hover:bg-wgold/10'
                 }`}
               >
-                {autoDraw ? `Auto-draw ON (next in ${countdown ?? drawIntervalSeconds}s)` : 'Start Auto-draw (every 15s)'}
+                {autoDraw ? `Auto-draw ON (next in ${countdown ?? drawIntervalSeconds}s)` : `Start Auto-draw (every ${drawIntervalSeconds}s)`}
               </button>
             )}
             {game.status !== 'ended' && (
@@ -263,6 +300,34 @@ export default function AdminPage() {
               </button>
             )}
           </div>
+
+          {game.status !== 'ended' && (
+            <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-wgold/30 bg-black/30 p-4">
+              <label htmlFor="draw-interval" className="text-sm text-white/70">
+                Draw timer (seconds):
+              </label>
+              <input
+                id="draw-interval"
+                type="number"
+                min={5}
+                max={120}
+                value={intervalInput}
+                onChange={(e) => setIntervalInput(e.target.value)}
+                className="w-24 rounded-lg border border-wgold/40 bg-white/10 px-3 py-1.5 text-white outline-none focus:border-wgold"
+              />
+              <button
+                onClick={saveInterval}
+                disabled={savingInterval || String(game.draw_interval_seconds) === intervalInput}
+                className="rounded-lg bg-wgold px-4 py-1.5 text-sm font-bold text-wmaroon hover:brightness-110 disabled:opacity-50"
+              >
+                {savingInterval ? 'Saving…' : 'Save'}
+              </button>
+              <span className="text-xs text-white/50">
+                Currently {drawIntervalSeconds}s between draws. Applies to future draws — takes effect
+                immediately, even mid-countdown.
+              </span>
+            </div>
+          )}
 
           {message && (
             <div className="mb-4 rounded-lg bg-red-900/60 px-4 py-2 text-sm text-red-100">{message}</div>
